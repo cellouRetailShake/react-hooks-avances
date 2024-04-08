@@ -4,18 +4,53 @@
 /* eslint-disable no-unused-vars */
 import * as React from 'react'
 
-// 🐶 retourne la bonne valeur dans le 'reducer'
-// On veut avoir le meme comportement que 'useState'
-// la valeur retournée du 'reducer' doit etre le nouveau 'state'
-const reducer = (prevState, newState) => {}
+
+const reducer = (state, action) => {
+  switch(action.type){
+    case 'DECREMENT': {
+      return {
+        ...state,
+        count: state.count - action.payload
+      }
+    }
+    case 'INCREMENT': {
+      return {
+        ...state,
+        count: state.count + action.payload
+      }
+    }
+    case 'RESET': {
+      return {count:0}
+    }
+    default : {
+      throw Error('Unknown action.');
+    }
+  }
+}
+
 
 function Compteur() {
-  // 🐶 créé un hook 'useReducer' qui utilise la fonction 'reducer' crée plus haut et 0 en valeur par défaut
-  // 🤖 const [count, setCount] = React.useReducer
+  const [state, dispatch] = React.useReducer(reducer,{ count: 0 })
+  const [payload, setPayload] = React.useState(0)
+  function increment() {
+    dispatch({type: 'INCREMENT',payload});
+  }
+  function decrement() {
+    dispatch({type: 'DECREMENT',payload});
+  }
+  function reset() {
+    dispatch({type: 'RESET'});
+  }
 
-  // 🐶 Utilise le state `count` pour la value du input
-  // 🐶 Utilise `setCount(count + 1)` pour le 'onClick'
-  return <input type="button" onClick={() => {}} value={0} />
+  return (
+    <>
+    <input type="number" onChange={(e) => setPayload(parseInt(e.target.value))} value={payload} />
+    <input type="button" onClick={decrement} value={'-'} />
+    {state.count}
+    <input type="button" onClick={increment} value={'+'} />
+    <input type="button" onClick={reset} value={'Zero'} />
+    </>
+  )
 }
 
 function App() {

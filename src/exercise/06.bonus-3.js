@@ -15,41 +15,37 @@ import {
 } from '../marvel'
 import '../02-styles.css'
 
-// 🐶 Créé un context 'MarvelCacheContext' avec `React.createContext()`
 
-// 🐶 Créé un reducer 'marvelCacheReducer' pour gérer les données en cache
-// 🤖 utilise une fonction de ce style :
-//
-// function marvelCacheReducer(state, action) {
-//   switch (action.type) {
-//     case 'ADD_MARVEL': {
-//       return {...state, [action.marvelName]: action.marvelData}
-//     }
-//     case 'ADD_MARVEL_LIST': {
-//       return {...state, [`${action.marvelName}-list`]: action.marvelData}
-//     }
-//     default: {
-//       throw new Error(`action impossible: ${action.type}`)
-//     }
-//   }
-// }
-
-// 🐶 Créé un Context Provider 'MarvelCacheProvider'
-function MarvelCacheProvider(props) {
-  // 🐶 Utlise le 'marvelCacheReducer' avec `React.useReducer`
-  // 🤖 const [cache, dispatch] = React.useReducer(marvelCacheReducer, {})
-  // 🐶 Retourne le provider avec les données du reducer
-  // 🤖 return <MarvelCacheContext.Provider value={[cache, dispatch]} {...props} />
+const MarvelCacheContext = React.createContext()
+const ttl = 1_000 * 60 * 60 
+const expire = Date.now() + ttl
+function marvelCacheReducer(state, action) {
+  switch (action.type) {
+    case 'ADD_MARVEL': {
+      return {...state, [action.marvelName]: {data: action.marvelData, expire}}
+    }
+    case 'ADD_MARVEL_LIST': {
+      return {...state, [`${action.marvelName}-list`]: {data: action.marvelData, expire}}
+    }
+    default: {
+      throw new Error(`action impossible: ${action.type}`)
+    }
+  }
 }
 
-// 🐶 Crée un Context Consumer 'useMarvelCache'
+
+function MarvelCacheProvider(props) {
+ const [cache, dispatch] = React.useReducer(marvelCacheReducer, {})
+ return <MarvelCacheContext.Provider value={[cache, dispatch]} {...props} />
+}
+
+
 function useMarvelCache() {
-  // 🐶 Utlise le contexte 'MarvelCacheContext' avec `React.useContext(MarvelCacheContext)`
-  // 🤖 gère le cas ou 'useMarvelCache' n'est pas utilisé avec le provider
-  // if (!context) {
-  //   throw new Error('useMarvelCache doit être utilisé avec MarvelCacheProvider')
-  // }
-  // return context
+  const context = React.useContext(MarvelCacheContext)
+  if (!context) {
+    throw new Error('useMarvelCache doit être utilisé avec MarvelCacheProvider')
+  }
+  return context
 }
 
 const reducer = (state, action) => {
@@ -65,7 +61,7 @@ const reducer = (state, action) => {
   }
 }
 
-// 🐶 Evolution de 'useFetchData' pour pourvoir mettre à jour les données avec `setData`
+
 function useFetchData() {
   const [state, dispatch] = React.useReducer(reducer, {
     data: null,
@@ -81,52 +77,64 @@ function useFetchData() {
       .catch(error => dispatch({type: 'fail', error}))
   }, [])
 
-  // 🐶 Dans le cas où l'on n'appelle pas d'API Rest (execute) on doit
-  // pourvoir mettre à jour des données.
-  // Pour cela on va retourner un callback 'setData' qui mettra à jour les data.
-  // 🤖
-  // const setData = React.useCallback(
-  //   data => dispatch({type: 'done', payload: data}),
-  //   [dispatch],
-  // )
+  const setData = React.useCallback(
+    data => dispatch({type: 'done', payload: data}),
+    [dispatch],
+  )
 
-  // 🐶 pense à retouner aussi setData pour pouvoir l'utiliser dans les hooks ci-dessous
-  return {data, error, status, execute}
+  return {data, error, status, execute, setData}
 }
 
-// 🐶 Fais évoluer ce hook pour gérer le cache
 function useFindMarvelList(marvelName) {
-  // 🐶 utilise le hook 'useMarvelCache'
-  // 🤖 const [cache, dispatch] = useMarvelCache()
+  const [cache, dispatch] = useMarvelCache()
 
-  // 🐶 ajoute 'setData'
-  const {data, error, status, execute} = useFetchData()
+  const {data, error, status, execute, setData} = useFetchData()
 
   React.useEffect(() => {
     if (!marvelName) {
       return
     }
-    // 🐶 ajoute deux conditions :
-    // 1. S'il y a des données dans : `cache[marvelName]`
-    // met à jour les données directement avec `setData(cache[marvelName])`
-    // 2. sinon (`cache[marvelName]` est vide )
-    // Appel l'API Rest
-    // `execute(fetchMarvelsList(marvelName))`
-    execute(fetchMarvelsList(marvelName))
-    // 🐶 N'oublie pas les nouvelles dépendances de 'useEffect'
-  }, [marvelName, execute])
+    else if(cache[`${marvelName}-list`]?.data && Date.now() < cache[`${marvelName}-list`].expire){
+      setData(cache[`${marvelName}-list`].data)
+    } 
+    else{
+      execute(
+        fetchMarvelsList(marvelName).then(marvelData => {
+          dispatch({
+            type: 'ADD_MARVEL_LIST',
+            marvelName,
+            marvelData,
+          })
+          return marvelData
+        }),
+      )
+
+    }
+  }, [marvelName, execute, setData, cache, dispatch])
   return {data, error, status}
 }
 
-// 🐶 Fais évoluer ce hook pour gérer le cache
+
 function useFindMarvelByName(marvelName) {
-  const {data, error, status, execute} = useFetchData()
+  const [cache, dispatch] = useMarvelCache()
+  const {data, error, status, execute, setData} = useFetchData()
   React.useEffect(() => {
     if (!marvelName) {
       return
     }
-    execute(fetchMarvel(marvelName))
-  }, [marvelName, execute])
+    else if(cache[marvelName]?.data && Date.now() < cache[marvelName].expire){
+      setData(cache[marvelName].data)
+    } 
+    else{
+      execute(
+        fetchMarvel(marvelName).then(marvelData => {
+          dispatch({type: 'ADD_MARVEL', marvelName, marvelData})
+          return marvelData
+        }),
+      )
+
+    }
+  }, [marvelName, execute, setData,cache,dispatch])
   return {data, error, status}
 }
 
@@ -187,16 +195,17 @@ function App() {
         Chercher une liste ?
       </label>
       <MarvelSearchForm marvelName={marvelName} onSearch={handleSearch} />
-      {/* 🐶 Pense à wrapper avec <MarvelCacheProvider> */}
-      <div className="marvel-detail">
-        <ErrorBoundary key={marvelName} FallbackComponent={ErrorDisplay}>
-          {searchList ? (
-            <MarvelList marvelName={marvelName} />
-          ) : (
-            <Marvel marvelName={marvelName} />
-          )}
-        </ErrorBoundary>
-      </div>
+      <MarvelCacheProvider>
+        <div className="marvel-detail">
+          <ErrorBoundary key={marvelName} FallbackComponent={ErrorDisplay}>
+            {searchList ? (
+              <MarvelList marvelName={marvelName} />
+            ) : (
+              <Marvel marvelName={marvelName} />
+            )}
+          </ErrorBoundary>
+        </div>
+      </MarvelCacheProvider>
     </div>
   )
 }
